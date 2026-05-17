@@ -1,8 +1,8 @@
-# NotebookLM-style RAG Application
+# NotebookLM-style RAG Application with Corrective RAG
 
-A complete **Retrieval-Augmented Generation (RAG)** application inspired by Google's NotebookLM. Upload PDF or text documents, and ask questions that are answered using only the content from your documents.
+A complete **Retrieval-Augmented Generation (RAG)** application inspired by Google's NotebookLM with **Corrective RAG (CRAG)** implementation. Upload PDF or text documents, and ask questions using either standard RAG or self-correcting CRAG with web search fallback.
 
-Built with Node.js, LangChain, OpenAI, and Qdrant vector database.
+Built with Node.js, LangChain, OpenAI, Qdrant vector database, and Tavily API.
 
 ---
 
@@ -20,6 +20,12 @@ Built with Node.js, LangChain, OpenAI, and Qdrant vector database.
 - **📊 Source Citations**: See exactly which chunks and pages were used to answer your question
 - **🌐 Clean Web UI**: Beautiful, responsive interface with drag-and-drop upload
 - **⚡ Production-Ready**: Complete error handling, validation, and logging
+- **🔧 Corrective RAG (NEW)**:
+  - LLM-based relevance evaluation
+  - Automatic chunk quality scoring and filtering
+  - Web search fallback via Tavily API
+  - Self-correcting answer generation
+  - Detailed metrics (evaluation status, refinement stats, web search usage)
 
 ---
 
@@ -54,6 +60,7 @@ Built with Node.js, LangChain, OpenAI, and Qdrant vector database.
 - **Embeddings**: OpenAI `text-embedding-3-large`
 - **LLM**: OpenAI `gpt-4o-mini`
 - **Vector Database**: Qdrant
+- **Web Search**: Tavily API (optional)
 - **File Processing**: pdf-parse, Multer
 - **Frontend**: Vanilla JavaScript, HTML5, CSS3
 
@@ -139,7 +146,13 @@ CHUNK_OVERLAP=200
 
 # Retrieval Configuration
 TOP_K=5
+
+# Corrective RAG Configuration (Optional)
+RELEVANCE_THRESHOLD=0.5
+TAVILY_API_KEY=your-tavily-api-key-here
 ```
+
+**Note**: Get a free Tavily API key at [https://tavily.com](https://tavily.com) to enable web search fallback in Corrective RAG.
 
 ### Step 4: Start Qdrant
 
@@ -188,19 +201,56 @@ http://localhost:3000
 - Wait for the indexing process to complete
 - You'll see a success message with the number of chunks created
 
-### 2. Ask Questions
+### 2. Select RAG Mode
+
+Choose between two modes:
+- **Standard RAG**: Fast, uses all retrieved chunks
+- **Corrective RAG**: Evaluates relevance, filters chunks, adds web search when needed
+
+### 3. Ask Questions
 
 - Type your question in the text area
 - Click "Ask Question" or press `Ctrl+Enter`
 - Wait for the AI to retrieve relevant information and generate an answer
 
-### 3. View Results
+### 4. View Results
 
+- **CRAG Metrics** (Corrective RAG only):
+  - Evaluation result (RELEVANT/AMBIGUOUS/IRRELEVANT)
+  - Retrieved chunks count
+  - Refined chunks count
+  - Final chunks used
+  - Web search usage indicator
 - **Answer**: The AI-generated response based on your documents
 - **Sources**: The specific chunks used to generate the answer, with:
   - File name
-  - Page number
+  - Page number or URL (for web results)
+  - Relevance score (Corrective RAG only)
   - Chunk content preview
+
+---
+
+## Corrective RAG
+
+For detailed information about the Corrective RAG implementation, see **[CRAG_README.md](./CRAG_README.md)**.
+
+### Quick Overview
+
+Corrective RAG adds three self-correction steps:
+1. **Evaluate**: LLM judges if retrieved docs are RELEVANT/AMBIGUOUS/IRRELEVANT
+2. **Refine**: Scores and filters individual chunks by relevance
+3. **Augment**: Adds web search results when documents are insufficient
+
+**Use Corrective RAG when:**
+- Document relevance is uncertain
+- You want higher accuracy
+- External knowledge might help
+- You need transparency (evaluation metrics)
+
+**Use Standard RAG when:**
+- Documents are known to be relevant
+- Speed is critical
+- Lower cost is preferred
 
 ---
 
@@ -244,7 +294,7 @@ Response:
 }
 ```
 
-### Query Documents
+### Query Documents (Standard RAG)
 
 ```http
 POST /api/query
@@ -261,16 +311,46 @@ Response:
   "success": true,
   "data": {
     "answer": "The main topic of the document is...",
+    "sources": [...],
+    "retrievedChunks": 5,
+    "query": "What is the main topic?"
+  }
+}
+```
+
+### Query with Corrective RAG
+
+```http
+POST /api/query/crag
+Content-Type: application/json
+
+{
+  "question": "What is the main topic?"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "answer": "The main topic of the document is...",
     "sources": [
       {
         "chunkNumber": 1,
+        "source": "example.pdf",
         "fileName": "example.pdf",
         "page": 1,
+        "url": null,
         "content": "Content preview...",
-        "relevanceScore": "N/A"
+        "relevanceScore": "0.85"
       }
     ],
     "retrievedChunks": 5,
+    "refinedChunks": 3,
+    "finalChunks": 3,
+    "evaluation": "RELEVANT",
+    "webSearchUsed": false,
     "query": "What is the main topic?"
   }
 }
@@ -317,12 +397,14 @@ notebooklm-rag/
 ├── .env                  # Environment variables (create from .env.example)
 ├── .env.example          # Example environment configuration
 ├── server.js             # Express server with routes
-├── rag.js                # RAG pipeline implementation
+├── rag.js                # Standard RAG pipeline implementation
+├── crag.js               # Corrective RAG implementation (NEW)
 ├── public/               # Frontend assets
-│   ├── index.html        # Main web interface
+│   ├── index.html        # Main web interface with RAG mode selector
 │   └── styles.css        # Styling
 ├── uploads/              # Temporary file storage (auto-created)
-└── README.md             # This file
+├── README.md             # This file
+└── CRAG_README.md        # Corrective RAG documentation (NEW)
 ```
 
 ---

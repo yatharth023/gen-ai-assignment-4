@@ -9,8 +9,8 @@
   <body>
     <div class="container">
       <header>
-        <h1>📚 NotebookLM-style RAG App</h1>
-        <p class="subtitle">Upload documents and ask questions powered by AI</p>
+        <h1>📚 NotebookLM with Corrective RAG</h1>
+        <p class="subtitle">Upload documents and ask questions with self-correcting AI</p>
       </header>
 
       <div class="main-content">
@@ -44,6 +44,17 @@
           <h2>💬 Ask Questions</h2>
           <p class="hint">Ask anything about your uploaded documents</p>
 
+          <div class="rag-mode-selector">
+            <label>
+              <input type="radio" name="ragMode" value="standard" checked />
+              Standard RAG
+            </label>
+            <label>
+              <input type="radio" name="ragMode" value="crag" />
+              Corrective RAG (with relevance check & web search)
+            </label>
+          </div>
+
           <div class="query-input-wrapper">
             <textarea
               id="queryInput"
@@ -61,6 +72,7 @@
         <!-- Results Section -->
         <section class="card results-section" id="resultsSection" style="display: none">
           <h2>💡 Answer</h2>
+          <div id="cragMetrics" class="crag-metrics"></div>
           <div id="answerContent" class="answer-content"></div>
 
           <h3>📖 Sources</h3>
@@ -188,13 +200,18 @@
           return;
         }
 
+        const ragMode = document.querySelector('input[name="ragMode"]:checked').value;
+        const endpoint = ragMode === "crag" ? "/api/query/crag" : "/api/query";
+
         try {
           queryBtn.disabled = true;
           queryBtn.textContent = "Processing...";
-          showQueryStatus("loading", "Searching documents and generating answer...");
+          showQueryStatus("loading", ragMode === "crag"
+            ? "Running Corrective RAG: evaluating relevance and generating answer..."
+            : "Searching documents and generating answer...");
           resultsSection.style.display = "none";
 
-          const response = await fetch("/api/query", {
+          const response = await fetch(endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -206,7 +223,7 @@
 
           if (result.success) {
             showQueryStatus("success", "✅ Answer generated");
-            displayResults(result.data);
+            displayResults(result.data, ragMode === "crag");
           } else {
             showQueryStatus("error", result.message || "Query failed");
           }
@@ -224,11 +241,45 @@
         queryStatus.style.display = "block";
       }
 
-      function displayResults(data) {
+      function displayResults(data, isCRAG = false) {
+        // Display CRAG metrics if available
+        const cragMetrics = document.getElementById("cragMetrics");
+        if (isCRAG && data.evaluation) {
+          cragMetrics.innerHTML = `
+            <div class="metrics-container">
+              <div class="metric">
+                <span class="metric-label">Evaluation:</span>
+                <span class="metric-value ${data.evaluation.toLowerCase()}">${data.evaluation}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Retrieved:</span>
+                <span class="metric-value">${data.retrievedChunks} chunks</span>
+              </div>
+              ${data.refinedChunks !== undefined ? `
+              <div class="metric">
+                <span class="metric-label">Refined:</span>
+                <span class="metric-value">${data.refinedChunks} chunks</span>
+              </div>
+              ` : ''}
+              <div class="metric">
+                <span class="metric-label">Final:</span>
+                <span class="metric-value">${data.finalChunks || data.sources.length} chunks</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Web Search:</span>
+                <span class="metric-value">${data.webSearchUsed ? '✅ Used' : '❌ Not used'}</span>
+              </div>
+            </div>
+          `;
+          cragMetrics.style.display = "block";
+        } else {
+          cragMetrics.style.display = "none";
+        }
+
         // Display answer
         answerContent.innerHTML = `
           <div class="answer-text">${formatAnswer(data.answer)}</div>
-          <div class="meta-info">Retrieved ${data.retrievedChunks} relevant chunks</div>
+          <div class="meta-info">Retrieved ${data.retrievedChunks} ${isCRAG ? 'initial' : 'relevant'} chunks</div>
         `;
 
         // Display sources
@@ -240,7 +291,8 @@
               <div class="source-header">
                 <span class="source-number">${source.chunkNumber}</span>
                 <span class="source-file">${source.fileName}</span>
-                <span class="source-page">Page: ${source.page}</span>
+                ${source.url ? `<span class="source-url"><a href="${source.url}" target="_blank">🔗 ${source.url}</a></span>` : `<span class="source-page">Page: ${source.page}</span>`}
+                ${source.relevanceScore !== "N/A" ? `<span class="relevance-score">Score: ${source.relevanceScore}</span>` : ''}
               </div>
               <div class="source-content">${escapeHtml(source.content)}</div>
             </div>

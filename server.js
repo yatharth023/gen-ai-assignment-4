@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import { indexDocument, queryDocument, checkQdrantConnection } from "./rag.js";
+import { correctiveRAGQuery } from "./crag.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,7 +112,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// Query the indexed documents
+// Query the indexed documents (Standard RAG)
 app.post("/api/query", async (req, res) => {
   try {
     const { question } = req.body;
@@ -136,6 +137,35 @@ app.post("/api/query", async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to process query",
+    });
+  }
+});
+
+// Query with Corrective RAG
+app.post("/api/query/crag", async (req, res) => {
+  try {
+    const { question } = req.body;
+
+    if (!question || question.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Question is required",
+      });
+    }
+
+    console.log(`Processing Corrective RAG query: ${question}`);
+
+    const result = await correctiveRAGQuery(question);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Corrective RAG query error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process corrective RAG query",
     });
   }
 });
